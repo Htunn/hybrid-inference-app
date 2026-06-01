@@ -64,7 +64,7 @@ async def _stream_ollama(messages: list[Message]) -> AsyncIterator[str]:
     ollama_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     url = f"{ollama_base}/api/chat"
     payload = {
-        "model": os.getenv("OLLAMA_MODEL", "gemma3:2b"),
+        "model": os.getenv("OLLAMA_MODEL", "gemma4:e4b"),
         "messages": [{"role": m.role, "content": m.content} for m in messages],
         "stream": True,
     }
@@ -108,7 +108,7 @@ async def _stream_gemini(messages: list[Message]) -> AsyncIterator[str]:
             detail="GOOGLE_API_KEY is not configured on the server.",
         )
 
-    model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
         f"{model}:streamGenerateContent?alt=sse&key={api_key}"
@@ -165,10 +165,9 @@ async def chat(request: ChatRequest) -> StreamingResponse:
     Streams tokens as SSE. The last event is always:
         data: [DONE]
     """
-    node_env = os.getenv("NODE_ENV", "development")
-
     async def event_stream() -> AsyncIterator[str]:
-        upstream = _stream_ollama if node_env != "production" else _stream_gemini
+        provider = os.getenv("INFERENCE_PROVIDER", "ollama")
+        upstream = _stream_gemini if provider == "gemini" else _stream_ollama
         async for chunk in upstream(request.messages):
             yield chunk
         yield "data: [DONE]\n\n"

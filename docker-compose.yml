@@ -1,0 +1,46 @@
+services:
+  # --------------------------------------------------------------------------
+  # Backend — FastAPI + Gunicorn/Uvicorn
+  # --------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      # Set to "gemini" for cloud production, "ollama" to use local Ollama
+      INFERENCE_PROVIDER: ${INFERENCE_PROVIDER:-gemini}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      # CORS must match the origin that browsers see (the frontend host/port)
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost}
+      # Only needed when INFERENCE_PROVIDER=ollama inside Docker
+      # host.docker.internal resolves to the Docker host's IP (macOS/Windows)
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e4b}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    # Backend is not exposed directly — traffic enters through the frontend Nginx
+    expose:
+      - "8000"
+
+  # --------------------------------------------------------------------------
+  # Frontend — React PWA served by Nginx (also reverse-proxies /api/*)
+  # --------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Empty → relative /api/ path → Nginx handles the proxy
+        VITE_API_URL: ""
+    ports:
+      - "${PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
