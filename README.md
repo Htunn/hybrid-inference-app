@@ -417,3 +417,226 @@ hybrid-inference-app/
 | **Input validation** | Pydantic rejects blank content, unknown roles, and empty message lists before any upstream call |
 | **No key in logs** | Structured logs never print `GOOGLE_API_KEY` |
 | **SSE not cached** | Workbox `NetworkOnly` strategy for `/api/*` — no token leakage via cache |
+
+---
+
+## Inference Server Deep-Dive
+
+### Ollama + Gemma4 E4B (local inference server)
+
+Ollama acts as a **local OpenAI-compatible inference server** that runs entirely on your machine. When `INFERENCE_PROVIDER=ollama` the FastAPI proxy talks to it over `http://localhost:11434`.
+
+#### How the request flows
+
+```mermaid
+sequenceDiagram
+    participant Proxy as FastAPI Proxy
+    participant OL    as Ollama daemon<br/>(:11434)
+    participant GPU   as Local GPU / CPU<br/>(gemma4:e4b weights)
+
+    Proxy->>OL: POST /api/chat<br/>{"model":"gemma4:e4b","messages":[…],"stream":true}
+    OL->>GPU: load model weights (cached after first call)
+    loop NDJSON lines
+        GPU-->>OL: next token logits → sampled token
+        OL-->>Proxy: {"message":{"content":"tok"},"done":false}
+        Proxy-->>Proxy: re-emit as SSE frame: data: "tok"\n\n
+    end
+    OL-->>Proxy: {"done":true}
+    Proxy-->>Proxy: emit data: [DONE]\n\n
+```
+
+#### Gemma4 E4B model facts
+
+| Property | Value |
+|---|---|
+| Model family | Gemma 4 (Google DeepMind) |
+| Variant | `e4b` — 4-bit quantised, ~3 GB on disk |
+| Context window | 8 192 tokens |
+| Strengths | Instruction following, coding, reasoning |
+| Hardware requirement | 8 GB RAM minimum; GPU optional (falls back to CPU) |
+| Privacy | 100% on-device — zero external network calls |
+
+#### Wire format — Ollama NDJSON
+
+Ollama streams newline-delimited JSON. The proxy reads each line, extracts `message.content`, and re-wraps it as an SSE frame:
+
+```
+# Ollama raw output (one JSON object per line)
+{"model":"gemma4:e4b","message":{"role":"assistant","content":"Hello"},"done":false}
+{"model":"gemma4:e4b","message":{"role":"assistant","content":" there"},"done":false}
+{"model":"gemma4:e4b","done":true,"total_duration":1234567}
+
+# Normalised SSE output (what the browser receives)
+data: "Hello"\n\n
+data: " there"\n\n
+data: [DONE]\n\n
+```
+
+#### Ollama setup commands
+
+```bash
+# Install (macOS)
+brew install ollama
+
+# Start the inference daemon
+ollama serve                   # http://localhost:11434
+
+# Pull the model (one-time, ~3 GB)
+ollama pull gemma4:e4b
+
+# Verify it responds
+curl http://localhost:11434/api/chat \
+  -d '{"model":"gemma4:e4b","messages":[{"role":"user","content":"ping"}],"stream":false}'
+
+# List all downloaded models
+ollama list
+
+# Switch to a different local model (no code change needed)
+OLLAMA_MODEL=llama3.1:8b uvicorn main:app --reload --port 8000
+```
+
+---
+
+### Google Gemini 2.5 Flash (cloud inference server)
+
+When `INFERENCE_PROVIDER=gemini` the proxy forwards requests to the **Google Generative Language API** over HTTPS. The API key stays server-side.
+
+#### How the request flows
+
+```mermaid
+sequenceDiagram
+    participant Proxy  as FastAPI Proxy
+    participant GAPI   as Google AI API<br/>(generativelanguage.googleapis.com)
+    participant DC     as Google Data Centre<br/>(gemini-2.5-flash)
+
+    Proxy->>GAPI: POST /v1beta/models/gemini-2.5-flash:streamGenerateContent<br/>?alt=sse&key=*** (server-side only)
+    Note over Proxy,GAPI: Body: {contents:[{role,parts:[{text}]}]}
+    GAPI->>DC: route to inference cluster
+    loop Gemini SSE stream
+        DC-->>GAPI: token batch
+        GAPI-->>Proxy: data: {candidates:[{content:{parts:[{text:"tok"}]}}]}
+        Proxy-->>Proxy: extract text → emit data: "tok"\n\n
+    end
+    GAPI-->>Proxy: stream ends (connection close)
+    Proxy-->>Proxy: emit data: [DONE]\n\n
+```
+
+#### Gemini 2.5 Flash model facts
+
+| Property | Value |
+|---|---|
+| Model family | Gemini 2.5 (Google DeepMind) |
+| Variant | Flash — optimised for speed and cost |
+| Context window | 1 048 576 tokens (1M) |
+| Strengths | Long-context, multimodal reasoning, instruction following |
+| Latency | First token typically < 500 ms |
+| Cost | Pay-per-token via Google AI Studio |
+| Privacy | Data processed by Google; review their [data policy](https://ai.google.dev/gemini-api/terms) |
+
+#### Wire format — Gemini SSE
+
+Gemini natively streams SSE when `?alt=sse` is appended. The proxy extracts the text token from the nested candidate structure:
+
+```
+# Gemini raw SSE line
+data: {"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"index":0}]}
+
+# Normalised SSE output (what the browser receives)
+data: "Hello"\n\n
+data: [DONE]\n\n
+```
+
+#### Getting and rotating API keys
+
+```bash
+# 1. Create a key at Google AI Studio
+open https://aistudio.google.com/app/apikey
+
+# 2. Set it in backend/.env (never commit this file)
+echo "GOOGLE_API_KEY=your_key_here" >> backend/.env
+
+# 3. List available models for your key
+curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=$GOOGLE_API_KEY" \
+  | python3 -c "import json,sys; [print(m['name']) for m in json.load(sys.stdin)['models']]"
+
+# 4. Switch model without rebuild
+GEMINI_MODEL=gemini-2.5-pro docker compose up -d
+```
+
+#### Comparing the two inference backends
+
+| | Ollama + Gemma4 E4B | Google Gemini 2.5 Flash |
+|---|---|---|
+| **Cost** | Free (electricity only) | Pay-per-token |
+| **Privacy** | 100% on-device | Google processes data |
+| **Latency** | Depends on local hardware | ~500 ms first token |
+| **Context window** | 8 192 tokens | 1 048 576 tokens |
+| **Offline capable** | Yes | No |
+| **Setup** | `ollama pull gemma4:e4b` | Google AI Studio API key |
+| **Best for** | Dev, testing, private data | Production, long context, quality |
+
+---
+
+## Contributing
+
+Contributions are welcome! Here's how to get started:
+
+### Workflow
+
+```bash
+# 1. Fork the repo and clone your fork
+git clone https://github.com/<your-username>/hybrid-inference-app.git
+cd hybrid-inference-app
+
+# 2. Create a feature branch off main
+git checkout -b feat/your-feature-name
+
+# 3. Set up local dev environment
+cd backend && python3.11 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+cd ../frontend && npm install
+
+# 4. Make your changes, then verify nothing is broken
+cd backend && uvicorn main:app --reload --port 8000 &
+cd ../frontend && npm run build   # must produce 0 errors
+
+# 5. Commit using conventional commits
+git commit -m "feat: add streaming abort support"
+git commit -m "fix: handle empty Gemini candidate list"
+git commit -m "docs: add custom model guide"
+
+# 6. Push and open a PR against main
+git push origin feat/your-feature-name
+```
+
+### Conventional commit prefixes
+
+| Prefix | When to use |
+|---|---|
+| `feat:` | New feature |
+| `fix:` | Bug fix |
+| `docs:` | Documentation only |
+| `chore:` | Build, deps, tooling |
+| `refactor:` | Code change with no behaviour change |
+| `test:` | Adding or fixing tests |
+
+### Good first contributions
+
+- Add a system-prompt field to the UI
+- Support abort/cancel of an in-flight stream
+- Add a model selector dropdown
+- Add end-to-end tests (Playwright)
+- Add support for a third upstream (e.g. Anthropic Claude via Bedrock)
+
+### Code style
+
+- **Python** — PEP 8; type annotations on all public functions; Pydantic for all I/O boundaries
+- **TypeScript** — strict mode; no `any`; prefer `const`
+- Keep PRs focused: one concern per PR
+
+---
+
+## License
+
+MIT © 2026 [Htunn](https://github.com/Htunn)
+
+See [LICENSE](LICENSE) for the full text.
