@@ -1,17 +1,47 @@
 # Hybrid Inference Chat
 
-A **mobile-first Progressive Web App (PWA)** that streams AI responses token-by-token, switching between a **local Ollama model** (development / air-gapped) and **Google Gemini 2.5 Flash** (production) — all routed through a secure FastAPI proxy so API keys never reach the browser.
+A **mobile-first Progressive Web App (PWA)** for LLM inference that streams AI responses token-by-token. It implements a **hybrid inference pattern**: routing requests to a **local Ollama model** (on-device, zero latency, zero cost) in development, and to **Google Gemini 2.5 Flash** (cloud-hosted, scalable) in production — all through a secure FastAPI proxy so API keys never reach the browser.
+
+The architecture is built around one core idea: **the client never talks to an AI provider directly**. Every token flows through the backend proxy, which normalises the wire format, enforces CORS, validates input, and decides which upstream to call based on a single environment variable.
 
 ---
 
-## Use Cases
+## LLM Inference Use Cases
 
-| Who | Scenario |
+### Why hybrid inference?
+
+Most applications need two things that are in tension:
+- **Fast, free iteration** during development (local model, no API cost, works offline)
+- **High-quality, scalable inference** in production (cloud model, managed capacity)
+
+This project solves that by making the inference provider a **runtime config switch**, not a code branch.
+
+```
+INFERENCE_PROVIDER=ollama  →  gemma4:e4b runs on your machine    (dev / air-gapped)
+INFERENCE_PROVIDER=gemini  →  Gemini 2.5 Flash runs on Google    (production / cloud)
+```
+
+No code changes. No rebuild. Same API contract for the frontend.
+
+### Who is this for?
+
+| Persona | Problem solved |
 |---|---|
-| **Developer** | Iterate on prompts locally with `gemma4:e4b` at zero cost and zero latency |
-| **Team** | Deploy to production by setting one env var — no code change needed |
-| **Privacy-conscious user** | All messages stay on-device when using the Ollama path |
-| **Product / SaaS** | Drop-in backend proxy; swap the upstream for any model behind the same API |
+| **ML / AI developer** | Prompt-engineer and iterate locally against `gemma4:e4b` at zero cost, then validate the same prompts against Gemini in one command |
+| **Backend engineer** | Add LLM streaming to an existing product without exposing API keys to the browser or building a streaming proxy from scratch |
+| **DevOps / platform team** | Ship the full stack as a single `docker compose up` — Nginx, FastAPI proxy, and model routing included |
+| **Privacy-first deployment** | Run entirely on-device with Ollama; no data ever leaves the host |
+| **Prototyping / hackathon** | Working streaming chat UI + secure proxy in minutes; swap the model by editing one line |
+
+### Inference scenarios covered
+
+| Scenario | Config | Model |
+|---|---|---|
+| Local development | `INFERENCE_PROVIDER=ollama` | `gemma4:e4b` via Ollama |
+| Air-gapped / offline | `INFERENCE_PROVIDER=ollama` | Any `ollama pull`-ed model |
+| Cloud production | `INFERENCE_PROVIDER=gemini` | `gemini-2.5-flash` |
+| Experimenting with other Gemini models | `GEMINI_MODEL=gemini-2.5-pro` | Any `/v1beta/models` model |
+| Custom local model | `OLLAMA_MODEL=llama3.1:8b` | Any Ollama model tag |
 
 ---
 
