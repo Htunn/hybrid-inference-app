@@ -15,7 +15,7 @@ function App() {
         <div>
           <h1 className="text-sm font-semibold leading-none">Hybrid Inference Chat</h1>
           <p className="mt-0.5 text-xs text-slate-400">
-            {import.meta.env.DEV ? 'Local · Gemma 3 2B via Ollama' : 'Cloud · Gemini 1.5 Flash'}
+            {import.meta.env.DEV ? 'Local · Gemma4 E4B via Ollama' : 'Cloud · Gemini 2.5 Flash'}
           </p>
         </div>
       </header>
