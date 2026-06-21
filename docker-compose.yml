@@ -1,5 +1,42 @@
 services:
   # --------------------------------------------------------------------------
+  # PostgreSQL + pgvector — RAG knowledge-base storage
+  # --------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: rag
+      # No fallback — POSTGRES_PASSWORD must be set explicitly in .env
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: rag_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d rag_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # postgres must NOT be published to the host in production
+    expose:
+      - "5432"
+
+  # --------------------------------------------------------------------------
   # Backend — FastAPI + Gunicorn/Uvicorn
   # --------------------------------------------------------------------------
   backend:
@@ -7,24 +44,71 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     environment:
-      # Set to "gemini" for cloud production, "ollama" to use local Ollama
+      # === Inference Provider (choose one) ===
+      # Options: ollama | gemini | vllm | openai
       INFERENCE_PROVIDER: ${INFERENCE_PROVIDER:-gemini}
+
+      # === Google Gemini ===
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
-      # CORS must match the origin that browsers see (the frontend host/port)
-      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost}
-      # Only needed when INFERENCE_PROVIDER=ollama inside Docker
-      # host.docker.internal resolves to the Docker host's IP (macOS/Windows)
+
+      # === OpenAI ===
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+
+      # === vLLM ===
+      VLLM_BASE_URL: ${VLLM_BASE_URL:-http://vllm:8000}
+      VLLM_MODEL: ${VLLM_MODEL:-meta-llama/Llama-3.1-8B-Instruct}
+      VLLM_API_KEY: ${VLLM_API_KEY:-EMPTY}
+
+      # === Ollama (local development) ===
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e4b}
+
+      # === Performance Tuning ===
+      BATCH_ENABLED: ${BATCH_ENABLED:-false}
+      BATCH_SIZE: ${BATCH_SIZE:-8}
+      BATCH_WAIT_MS: ${BATCH_WAIT_MS:-50}
+      PREFIX_CACHE_SIZE: ${PREFIX_CACHE_SIZE:-100}
+      PREFIX_MIN_LENGTH: ${PREFIX_MIN_LENGTH:-3}
+
+      # === RAG Pipeline ===
+      DATABASE_URL: postgresql+asyncpg://rag:${POSTGRES_PASSWORD}@postgres:5432/rag_db
+      EMBEDDER_PROVIDER: ${EMBEDDER_PROVIDER:-local}
+
+      # === CORS ===
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost}
+    networks:
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # Cache Hugging Face models to avoid re-downloading on restart
+      - hf_cache:/tmp/huggingface
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          'python -c "import urllib.request; urllib.request.urlopen(''http://localhost:8000/health'')" || exit 1',
+        ]
       interval: 20s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 15s
     restart: unless-stopped
-    # Backend is not exposed directly — traffic enters through the frontend Nginx
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "2.0"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
     expose:
       - "8000"
 
@@ -38,9 +122,125 @@ services:
       args:
         # Empty → relative /api/ path → Nginx handles the proxy
         VITE_API_URL: ""
+    networks:
+      - internal
     ports:
       - "${PORT:-80}:80"
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # --------------------------------------------------------------------------
+  # vLLM — High-performance inference server (optional, GPU required)
+  # --------------------------------------------------------------------------
+  # Enable by setting INFERENCE_PROVIDER=vllm
+  # Requires: NVIDIA GPU with CUDA support (12.1+)
+  # Model caching: models are downloaded to the vllm_models volume
+  vllm:
+    image: vllm/vllm-openai:latest
+    command:
+      - --model=${VLLM_MODEL:-meta-llama/Llama-3.1-8B-Instruct}
+      - --dtype=auto
+      - --gpu-memory-utilization=0.9
+      - --max-model-len=8192
+      - --enable-prefix-caching
+      - --enable-chunked-prefill
+      - --quantization=${VLLM_QUANTIZATION:-fp8}
+      - --kv-cache-dtype=fp8
+      - --max-num-seqs=256
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+    volumes:
+      - vllm_models:/root/.cache/huggingface
+    networks:
+      - internal
+    expose:
+      - "8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    profiles:
+      - vllm # Only starts when explicitly enabled
+    # To use: docker compose --profile vllm up
+
+  # --------------------------------------------------------------------------
+  # Prometheus — Metrics collection
+  # --------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+    networks:
+      - internal
+    expose:
+      - "9090"
+    restart: unless-stopped
+    profiles:
+      - monitoring
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # --------------------------------------------------------------------------
+  # Grafana — Metrics visualization
+  # --------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: http://localhost:3000
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - internal
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    profiles:
+      - monitoring
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  internal:
+    driver: bridge
+    internal: false # set to true if frontend sits behind an external load balancer
+
+volumes:
+  pgdata:
+  hf_cache: # Hugging Face model cache for sentence-transformers
+  vllm_models:
+  prometheus_data:
+  grafana_data:

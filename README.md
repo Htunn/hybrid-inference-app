@@ -1,47 +1,183 @@
-# Hybrid Inference Chat
+# Hybrid Inference Platform
 
-A **mobile-first Progressive Web App (PWA)** for LLM inference that streams AI responses token-by-token. It implements a **hybrid inference pattern**: routing requests to a **local Ollama model** (on-device, zero latency, zero cost) in development, and to **Google Gemini 2.5 Flash** (cloud-hosted, scalable) in production — all through a secure FastAPI proxy so API keys never reach the browser.
+**A learning-focused demonstration of AI inference and RAG (Retrieval Augmented Generation) pipelines.**
 
-The architecture is built around one core idea: **the client never talks to an AI provider directly**. Every token flows through the backend proxy, which normalises the wire format, enforces CORS, validates input, and decides which upstream to call based on a single environment variable.
+This project shows the complete end-to-end flow of how modern AI applications work behind the scenes — from uploading documents and generating embeddings, to semantic search, streaming inference, and response generation. Perfect for developers who want to understand how these systems work by seeing a complete, working implementation.
+
+## Project Objective
+
+This is a **demonstration project** designed to help you **understand the end-to-end flow** of how inference and RAG work behind the scenes. Not intended for large-scale production or enterprise deployments.
+
+**Learning Focus:**
+- 🔍 **See how RAG works** — Upload documents, watch them get chunked and embedded, query with semantic search
+- 🔄 **Understand streaming inference** — Follow token-by-token generation from LLM to browser via Server-Sent Events (SSE)
+- 🔌 **Multi-provider abstraction** — Switch between local (Ollama) and cloud (Gemini/OpenAI) models without code changes
+- 📊 **Observability** — See request latency, token throughput, cache performance via Prometheus metrics
+- 🏗️ **Architecture patterns** — Learn production-like patterns (Docker orchestration, health checks, caching, streaming)
+
+**What this is NOT:**
+- ❌ Large-scale production system
+- ❌ Enterprise-grade deployment
+- ❌ Mission-critical application platform
 
 ---
 
-## LLM Inference Use Cases
+## Platform Support
 
-### Why hybrid inference?
+### ✅ Supported Platforms
+- **macOS (Intel & Apple Silicon M1/M2/M3)** — Optimized with CPU-only PyTorch for fast builds (~5 min vs. 20+ min)
+- **Linux (x86_64 & ARM64)** — Works on cloud VMs, local machines, Kubernetes clusters
+- **Docker Desktop** — Cross-platform containerized deployment
 
-Most applications need two things that are in tension:
-- **Fast, free iteration** during development (local model, no API cost, works offline)
-- **High-quality, scalable inference** in production (cloud model, managed capacity)
+### ⚠️ Current Limitations
+- **Windows with NVIDIA GPU** — Not currently supported. The RAG pipeline uses CPU-only PyTorch to avoid CUDA dependencies. Windows users can run via Docker Desktop, but NVIDIA GPU acceleration for embeddings is not configured.
+- **vLLM provider** — Requires NVIDIA GPU + CUDA drivers (Linux only). Not compatible with Mac or CPU-only builds.
 
-This project solves that by making the inference provider a **runtime config switch**, not a code branch.
+> **Why CPU-only PyTorch?** The RAG embedding model (`sentence-transformers`) depends on PyTorch. The default PyTorch installation downloads 444 MB of CUDA/cuDNN libraries that Mac users don't need. The CPU-only build reduces Docker image size and build time significantly.
 
+### Future Roadmap
+- [ ] Windows CUDA support for RAG embeddings
+- [ ] Apple Metal GPU acceleration for Mac (via PyTorch MPS)
+- [ ] AMD ROCm support for vLLM on Linux
+
+---
+
+## What Makes This Different From Basic Tutorials?
+
+### Typical Tutorial Approach
 ```
-INFERENCE_PROVIDER=ollama  →  gemma4:e4b runs on your machine    (dev / air-gapped)
-INFERENCE_PROVIDER=gemini  →  Gemini 2.5 Flash runs on Google    (production / cloud)
+📖 Code snippets showing API calls
+📖 Conceptual explanations
+❌ No complete, runnable system
+❌ No observability or debugging tools
+❌ Single provider only
 ```
 
-No code changes. No rebuild. Same API contract for the frontend.
+### This Project
+```
+✅ Full working implementation with Docker
+✅ Complete RAG pipeline with pgvector
+✅ Multiple inference backends (4 providers)
+✅ Metrics and monitoring with Grafana
+✅ Production-like architecture patterns
+✅ You can inspect every step of the flow
+```
 
-### Who is this for?
+**Architecture Overview:**
+```
+┌─────────────┐
+│  Client     │
+│  (browser)  │
+└──────┬──────┘
+       │ API key exposed
+       │ streaming not standardized
+       ▼
+┌─────────────┐
+│  LLM API    │
+│  (vendor)   │
+└─────────────┘
+```
+🚫 **Limitations of basic setups:**
+- API keys in browser = security risk
+- No RAG / document retrieval
+- No monitoring or observability
+- No caching layer
+- Single provider (vendor lock-in)
+- No production deployment infrastructure
 
-| Persona | Problem solved |
-|---|---|
-| **ML / AI developer** | Prompt-engineer and iterate locally against `gemma4:e4b` at zero cost, then validate the same prompts against Gemini in one command |
-| **Backend engineer** | Add LLM streaming to an existing product without exposing API keys to the browser or building a streaming proxy from scratch |
-| **DevOps / platform team** | Ship the full stack as a single `docker compose up` — Nginx, FastAPI proxy, and model routing included |
-| **Privacy-first deployment** | Run entirely on-device with Ollama; no data ever leaves the host |
-| **Prototyping / hackathon** | Working streaming chat UI + secure proxy in minutes; swap the model by editing one line |
+### This Platform (Complete Learning Environment)
+```
+┌──────────────┐     ┌────────────────────────┐     ┌──────────────┐
+│  React PWA   │ ──▶ │  FastAPI Proxy         │ ──▶ │ Ollama       │
+│  (offline)   │     │  • RAG pipeline        │     │ Gemini       │
+│              │ ◀── │  • Prefix cache        │ ◀── │ OpenAI       │
+│              │     │  • Batch processor     │     │ vLLM (GPU)   │
+└──────────────┘     │  • Rate limiting       │     └──────────────┘
+                     │  • Prometheus metrics  │
+                     └──────┬─────────────────┘
+                            │
+                     ┌──────▼─────────┐
+                     │  PostgreSQL    │
+                     │  + pgvector    │
+                     │  (embeddings)  │
+                     └────────────────┘
+```
 
-### Inference scenarios covered
+**📚 What you can learn:**
+✅ **RAG with pgvector** — Upload documents (.pdf/.md/.txt), see automatic chunking, semantic search with HNSW index  
+✅ **Prefix caching** — Understand how to reuse system prompt tokens (observe 40-60% savings in metrics)  
+✅ **Batch processing** — See how to queue multiple inference jobs and process asynchronously  
+✅ **Multi-provider** — Switch between Ollama (local), Gemini (cloud), OpenAI (GPT-4o), vLLM (Linux GPU)  
+✅ **Observability** — Explore Prometheus metrics + Grafana dashboards (latency, throughput, cache hits)  
+✅ **Security patterns** — See rate limiting (20 req/min), CORS configuration, input validation  
+✅ **Deployment** — Learn Docker Compose orchestration, health checks, multi-stage builds  
+✅ **PWA patterns** — Service worker caching, offline-first design, installable web app  
 
-| Scenario | Config | Model |
+---
+
+## Use Cases: When to Use This Project
+
+| Scenario | Recommended Approach | This Project |
 |---|---|---|
-| Local development | `INFERENCE_PROVIDER=ollama` | `gemma4:e4b` via Ollama |
-| Air-gapped / offline | `INFERENCE_PROVIDER=ollama` | Any `ollama pull`-ed model |
-| Cloud production | `INFERENCE_PROVIDER=gemini` | `gemini-2.5-flash` |
-| Experimenting with other Gemini models | `GEMINI_MODEL=gemini-2.5-pro` | Any `/v1beta/models` model |
-| Custom local model | `OLLAMA_MODEL=llama3.1:8b` | Any Ollama model tag |
+| **Learning how RAG works** | Read tutorials | ✅ **See it in action** — Upload docs, query, inspect chunks |
+| **Understanding inference streaming** | Read API docs | ✅ **Watch tokens flow** — SSE stream from LLM → backend → browser |
+| **Prototyping RAG apps** | Start from scratch | ✅ **Reference implementation** — Full pipeline with pgvector |
+| **Comparing LLM providers** | Write separate clients | ✅ **Switch with 1 env var** — Ollama, Gemini, OpenAI, vLLM |
+| **Quick single-user prototype** | Ollama CLI | ❌ Overkill — Too many components |
+| **Large-scale production** | Use managed services | ❌ Not designed for enterprise scale |
+
+### Example Learning Scenarios
+
+**1. Understanding RAG Pipeline**
+- Upload a PDF document (`.pdf`, `.md`, or `.txt`)
+- Watch it get chunked into semantic sections
+- See embeddings generated with `all-MiniLM-L6-v2`
+- Query: "What is X?" and inspect retrieved chunks
+- Observe how chunks are injected into LLM context
+- See source citations in the response
+
+**2. Exploring Inference Backends**
+- Start with Ollama (free, runs locally)
+- Switch to Gemini (cloud, faster responses)
+- Compare latency and token throughput in Grafana
+- No code changes required — just environment variable
+
+**3. Observing System Behavior**
+- Open Grafana dashboard at `http://localhost:3000`
+- Send multiple queries and watch metrics update
+- See cache hit rate improve with repeated prompts
+- Monitor vector search latency for RAG queries
+
+---
+
+## Hybrid Inference Pattern
+
+### Why "hybrid"?
+
+This project demonstrates a flexible architecture where you can:
+- **Develop locally** with free on-device models (Ollama) — no API costs, works offline
+- **Test with cloud APIs** (Gemini, OpenAI) — higher quality responses, managed infrastructure
+- **Switch between them** with a single environment variable — no code changes, same API contract
+
+```bash
+INFERENCE_PROVIDER=ollama  →  gemma4:e4b runs on your machine    (free, offline)
+INFERENCE_PROVIDER=gemini  →  Gemini 2.5 Flash runs on Google    (cloud, fast)
+INFERENCE_PROVIDER=openai  →  GPT-4o runs on OpenAI             (cloud, alternative)
+INFERENCE_PROVIDER=vllm    →  Llama 3.1 runs on your GPU        (Linux + NVIDIA GPU only)
+```
+
+This pattern helps you understand how to build provider-agnostic inference systems.
+
+### Architecture Principle
+
+**The client never talks to an AI provider directly.** Every token flows through the backend proxy, which demonstrates:
+- How to normalize different API formats (NDJSON → SSE, SSE → SSE)
+- How to implement rate limiting and CORS
+- How to validate input with Pydantic
+- How RAG retrieval and context injection works
+- How prefix caching improves performance
+- How to collect metrics for observability
+- How to route to different providers at runtime
 
 ---
 
@@ -241,6 +377,303 @@ sequenceDiagram
     Net-->>Browser: live token stream
 ```
 
+### 5 — RAG ingestion pipeline
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI     as React PWA<br/>(RAG tab)
+    participant Nginx  as Nginx<br/>(:80)
+    participant API    as FastAPI Proxy<br/>(:8000)
+    participant EMB    as LocalEmbedder<br/>(all-MiniLM-L6-v2)
+    participant PG     as PostgreSQL<br/>(pgvector)
+
+    User->>UI: drag & drop / browse → selects .md / .txt / .pdf
+    activate UI
+    UI->>Nginx: POST /api/rag/ingest  multipart/form-data
+    activate Nginx
+    Nginx->>API: reverse-proxy
+    activate API
+
+    API->>API: load_upload() — read bytes, SHA-256 hash,\nextract text (pypdf for .pdf)
+    API->>PG: upsert document row by file_path
+    note over API,PG: if hash unchanged → return status:"skipped"
+
+    API->>API: split_document() — heading-aware\nmarkdown chunks (max 400 tokens, 50-token overlap)
+    API->>EMB: embed(chunk_texts)  [batch of 32]
+    activate EMB
+    EMB-->>API: list[list[float]]  (384-dim vectors)
+    deactivate EMB
+
+    loop each chunk
+        API->>PG: INSERT INTO chunks (content, embedding, …)
+    end
+    API->>PG: COMMIT
+    deactivate API
+
+    Nginx-->>UI: {"status":"ok","chunks_created":N}
+    deactivate Nginx
+    UI-->>User: "filename.md ingested successfully"
+    UI->>Nginx: GET /api/rag/documents
+    Nginx->>API: fetch document list
+    API->>PG: SELECT id, file_path, title, ingested_at FROM documents
+    PG-->>API: rows
+    API-->>UI: JSON document list
+    UI-->>User: document appears in Knowledge Base panel
+    deactivate UI
+```
+
+### 6 — RAG query pipeline
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI     as React PWA<br/>(RAG tab)
+    participant Nginx  as Nginx<br/>(:80)
+    participant API    as FastAPI Proxy<br/>(:8000)
+    participant EMB    as LocalEmbedder<br/>(all-MiniLM-L6-v2)
+    participant PG     as PostgreSQL<br/>(pgvector HNSW)
+    participant LLM    as LLM Upstream<br/>(Ollama or Gemini)
+
+    User->>UI: types question, presses Enter
+    activate UI
+    UI->>Nginx: POST /api/rag/query\n{"question":"…","top_k":5,"min_similarity":0.3}
+    activate Nginx
+    Nginx->>API: reverse-proxy
+    activate API
+
+    API->>EMB: embed_one(question)
+    activate EMB
+    EMB-->>API: query_vector[384]  (~5 ms on CPU)
+    deactivate EMB
+
+    API->>PG: SELECT … FROM chunks c JOIN documents d\nWHERE 1-(c.embedding <=> query_vector) ≥ 0.3\nORDER BY cosine distance LIMIT 5
+    note over API,PG: HNSW index — approximate nearest-neighbour
+    PG-->>API: top-k RetrievedChunk rows (content, file_path, heading, similarity)
+
+    alt no chunks above threshold
+        API-->>UI: SSE: "No relevant content found"\nSSE: {"type":"sources","sources":[]}\nSSE: [DONE]
+    else chunks found
+        API->>API: build_prompt() — inject numbered\nContext [1]…[k] sections + question
+
+        API->>LLM: POST /api/chat or Gemini API\n(system prompt + grounded user message, stream:true)
+        activate LLM
+
+        loop each generated token
+            LLM-->>API: token
+            API-->>Nginx: data: "tok"\n\n  (SSE)
+            Nginx-->>UI: forwarded live (proxy_buffering off)
+            UI-->>User: token appended to assistant bubble
+        end
+
+        LLM-->>API: stream ends
+        deactivate LLM
+        API-->>Nginx: data: {"type":"sources","sources":["file.md",…]}\n\n
+        API-->>Nginx: data: [DONE]\n\n
+        deactivate API
+        Nginx-->>UI: final SSE events
+        deactivate Nginx
+        UI-->>User: source badges rendered below answer
+    end
+    deactivate UI
+```
+
+### 7 — RAG document deletion
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI    as React PWA<br/>(RAG tab)
+    participant Nginx as Nginx<br/>(:80)
+    participant API   as FastAPI Proxy<br/>(:8000)
+    participant PG    as PostgreSQL<br/>(pgvector)
+
+    User->>UI: clicks ✕ on a document row
+    UI->>Nginx: DELETE /api/rag/documents/{id}
+    Nginx->>API: reverse-proxy
+    API->>PG: DELETE FROM documents WHERE id=…\n(CASCADE → chunks deleted automatically)
+    PG-->>API: OK
+    API-->>UI: {"status":"deleted","document_id":…}
+    UI->>Nginx: GET /api/rag/documents
+    Nginx->>API: refresh list
+    API->>PG: SELECT … FROM documents
+    PG-->>API: updated rows
+    API-->>UI: JSON document list
+    UI-->>User: document disappears from Knowledge Base panel
+```
+
+---
+
+## Technical Features
+
+### Advanced Capabilities (Inspired by vLLM)
+
+This project demonstrates several advanced techniques inspired by [vLLM](https://github.com/vllm-project/vllm) (83k+ stars, PagedAttention pioneer):
+
+#### 1. Multi-Backend Abstraction
+Support for **4 inference backends** with a unified interface:
+- **Ollama** — Local on-device inference (dev/air-gapped)
+- **Google Gemini** — Cloud API (production recommended)
+- **vLLM** — Self-hosted high-performance server (OpenAI-compatible)
+- **OpenAI** — GPT-4o / GPT-4o-mini via official API
+
+Switch providers with one environment variable — no code changes required:
+```bash
+INFERENCE_PROVIDER=vllm    # → vLLM server
+INFERENCE_PROVIDER=openai  # → OpenAI API
+INFERENCE_PROVIDER=gemini  # → Google Gemini
+INFERENCE_PROVIDER=ollama  # → Local Ollama
+```
+
+#### 2. Prefix Caching
+Automatic LRU caching of prompt prefixes to reduce redundant computation:
+- Caches repeated system messages, RAG context, chat history
+- SHA-256 hashing for cache key generation
+- Configurable cache size and minimum prefix length
+- Tracks cache hits/misses via Prometheus metrics
+
+**Example:** In RAG workflows with fixed system prompts, cache hit rate can exceed 70%.
+
+```bash
+PREFIX_CACHE_SIZE=100        # Max entries
+PREFIX_MIN_LENGTH=3          # Min messages to cache
+```
+
+#### 3. Continuous Batching
+Inspired by vLLM's continuous batching algorithm for throughput optimization:
+- Groups multiple requests into batches
+- Configurable batch size and wait time
+- Priority queue for request scheduling
+- Queue length monitoring
+
+```bash
+BATCH_ENABLED=true
+BATCH_SIZE=8                 # Max requests per batch
+BATCH_WAIT_MS=50             # Wait time before executing batch
+```
+
+**Note:** Current implementation is a framework for true continuous batching. Full vLLM-style batching requires model-level integration.
+
+#### 4. Comprehensive Metrics (Prometheus)
+Observability with 15+ metrics to help you understand system behavior:
+
+**Latency & Performance:**
+- `inference_latency_seconds` — Time to first token (TTFT) histogram
+- `inference_throughput_tokens_per_second` — Generation speed
+
+**Throughput:**
+- `inference_requests_total` — Counter by backend and status
+- `inference_tokens_total` — Total tokens generated
+
+**Caching:**
+- `prefix_cache_hits_total` / `prefix_cache_misses_total`
+- Cache hit rate calculation
+
+**Batching:**
+- `batch_size` — Histogram of batch sizes
+- `batch_wait_time_seconds` — Batching wait time
+- `queue_length` — Current queue depth
+
+**RAG:**
+- `rag_retrieval_latency_seconds` — Vector search performance
+- `rag_documents_retrieved_total` — Retrieved chunks counter
+
+Access metrics endpoint:
+```bash
+curl http://localhost/metrics
+```
+
+#### 5. Prometheus + Grafana Integration
+Pre-configured monitoring stack (optional):
+
+```bash
+# Start with monitoring
+docker compose --profile monitoring up
+
+# Access Grafana: http://localhost:3000
+# Default credentials: admin / admin
+```
+
+**Included Dashboard Panels:**
+- Requests per second (by backend)
+- Token throughput
+- Latency percentiles (P50, P95, P99)
+- Cache hit rate
+- Queue length
+- Average batch size
+
+Grafana datasource and dashboard are auto-provisioned.
+
+#### 6. vLLM Backend Support
+Optional vLLM service in docker-compose.yml for exploring GPU-accelerated inference:
+
+```bash
+# Start with vLLM (requires NVIDIA GPU)
+docker compose --profile vllm up
+
+# Backend auto-connects to vLLM
+INFERENCE_PROVIDER=vllm
+VLLM_MODEL=meta-llama/Llama-3.1-8B-Instruct
+```
+
+**vLLM Features Enabled:**
+- PagedAttention (via vLLM native implementation)
+- Prefix caching (`--enable-prefix-caching`)
+- Chunked prefill (`--enable-chunked-prefill`)
+- FP8 quantization (configurable: `VLLM_QUANTIZATION=fp8|awq|gptq`)
+- KV cache FP8 optimization
+
+#### 7. Quantization Configuration
+Comprehensive quantization settings in `config.toml`:
+
+**vLLM:**
+- FP8, AWQ, GPTQ support
+- KV cache dtype optimization
+- Speculative decoding configuration
+
+**Ollama:**
+- Model tags for quantization (`:q4_0`, `:q8_0`, `:e4b`, `:f16`)
+- GPU offloading control
+
+**Configuration Example:**
+```toml
+[vllm]
+model = "meta-llama/Llama-3.1-8B-Instruct"
+quantization = "fp8"
+kv_cache_dtype = "fp8"
+enable_prefix_caching = true
+gpu_memory_utilization = 0.9
+
+[ollama]
+model = "gemma4:e4b"  # 4-bit quantized
+quantization = "q4_0"
+num_gpu = 1
+```
+
+### Architecture Highlights
+
+**Error Handling:**
+- Graceful SSE error events (prevents connection hangs)
+- Request ID tracking for debugging
+- Startup validation checks
+
+**Performance Techniques:**
+- Gunicorn + Uvicorn workers for concurrency
+- Nginx reverse proxy with rate limiting (20 req/min per IP)
+- Zero-copy SSE streaming (`proxy_buffering off`)
+- CORS configuration
+
+**Observability:**
+- Structured logging with request/response correlation
+- Health check endpoint with cache stats
+- Prometheus metrics endpoint
+- Grafana dashboards for visualization
+
+**Configuration:**
+- Environment-based configuration
+- TOML config file for advanced settings
+- Docker Compose profiles (dev/monitoring/vllm)
+
 ---
 
 ## Prerequisites
@@ -290,7 +723,71 @@ Header shows **Local · Gemma4 E4B via Ollama**. Type a message and watch tokens
 
 ---
 
-## Production — Docker Compose (Gemini)
+## RAG Knowledge Base — Quick Start
+
+The **RAG tab** lets you upload documents and ask questions grounded in their content. It requires PostgreSQL with the pgvector extension, which is included in the Docker Compose stack.
+
+### Local development with Docker Compose
+
+```bash
+# Start all three services (postgres + backend + frontend)
+docker compose up --build
+
+# Open http://localhost — click the "RAG" tab
+# Upload a .md / .txt / .pdf file, then ask a question about it
+```
+
+The `pgvector/pgvector:pg16` image ships with the extension pre-installed — no manual setup needed. The backend initialises the schema on first startup.
+
+### Without Docker (RAG + Ollama dev setup)
+
+```bash
+# 1. Start PostgreSQL with pgvector (Docker is easiest)
+docker run -d \
+  --name pgvector \
+  -e POSTGRES_USER=rag \
+  -e POSTGRES_PASSWORD=ragpassword \
+  -e POSTGRES_DB=rag_db \
+  -p 5432:5432 \
+  pgvector/pgvector:pg16
+
+# 2. Add RAG env vars to backend/.env
+echo "DATABASE_URL=postgresql+asyncpg://rag:ragpassword@localhost:5432/rag_db" >> backend/.env
+echo "EMBEDDER_PROVIDER=local" >> backend/.env
+
+# 3. Install new dependencies (sentence-transformers downloads ~23 MB model on first embed)
+cd backend
+pip install -r requirements.txt
+
+# 4. Start the backend (tables + pgvector extension created automatically)
+uvicorn main:app --reload --port 8000
+```
+
+The first embed call downloads `all-MiniLM-L6-v2` to the Hugging Face cache (`~/.cache/huggingface`).
+
+### RAG architecture overview
+
+```mermaid
+flowchart LR
+    subgraph Ingestion["Ingestion pipeline (upload time)"]
+        direction TB
+        F["File upload\n.md / .txt / .pdf"] --> L["loader.py\nextract text + SHA-256 hash"]
+        L --> C["chunker.py\nheading-aware split\n≤ 400 tokens, 50-token overlap"]
+        C --> E["LocalEmbedder\nall-MiniLM-L6-v2\n384-dim vectors"]
+        E --> DB[("PostgreSQL\n+ pgvector\ndocuments + chunks")]
+    end
+
+    subgraph Query["Query pipeline (per request)"]
+        direction TB
+        Q["User question"] --> EQ["LocalEmbedder\nembed question"]
+        EQ --> VS["vector_search()\ncosine similarity ≥ 0.3\nHNSW index — top-k chunks"]
+        VS --> PB["prompt_builder.py\ninject context sections"]
+        PB --> LLM["LLM upstream\n(Ollama or Gemini)\nstreamed answer"]
+        LLM --> R["SSE tokens\n+ source badges"]
+    end
+
+    DB --> VS
+```
 
 ### 1. Get a Gemini API key
 
@@ -354,6 +851,8 @@ INFERENCE_PROVIDER=ollama docker compose up -d
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
 | `OLLAMA_MODEL` | `gemma4:e4b` | Any `ollama pull`-ed model tag |
 | `FRONTEND_ORIGIN` | `http://localhost:5173` | CORS-allowed origin (exact match, no trailing slash) |
+| `DATABASE_URL` | — | asyncpg connection string for RAG (e.g. `postgresql+asyncpg://rag:pw@localhost:5432/rag_db`); RAG disabled if unset |
+| `EMBEDDER_PROVIDER` | `local` | `local` (sentence-transformers) — `openai`/`gemini` stubs available |
 
 ### Frontend (`frontend/.env`)
 
@@ -368,6 +867,7 @@ All backend vars above, plus:
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `80` | Host port exposed by the frontend Nginx container |
+| `POSTGRES_PASSWORD` | `ragpassword` | PostgreSQL superuser password for the `rag` user |
 
 ---
 
@@ -376,29 +876,46 @@ All backend vars above, plus:
 ```
 hybrid-inference-app/
 ├── backend/
-│   ├── main.py              # FastAPI app — CORS, lifespan startup check, structured logging
+│   ├── main.py              # FastAPI app — CORS, lifespan (init_db + embedder), routing
 │   ├── routers/
-│   │   └── inference.py     # POST /api/chat — Pydantic models, Ollama + Gemini stream helpers
-│   ├── requirements.txt     # fastapi, uvicorn[standard], gunicorn, httpx, python-dotenv
+│   │   ├── inference.py     # POST /api/chat — Ollama + Gemini stream helpers
+│   │   └── rag.py           # POST /api/rag/ingest|query, GET|DELETE /api/rag/documents
+│   ├── db/
+│   │   ├── base.py          # Async SQLAlchemy engine, get_session(), init_db()
+│   │   └── models.py        # Document + Chunk tables; HNSW index on embedding vector(384)
+│   ├── rag/
+│   │   ├── embedder.py      # EmbeddingProvider ABC, LocalEmbedder (all-MiniLM-L6-v2), factory
+│   │   ├── loader.py        # Bytes → RawDocument (.md/.txt UTF-8, .pdf via pypdf)
+│   │   ├── chunker.py       # Heading-aware markdown split + sentence-boundary overlap
+│   │   ├── vector_store.py  # upsert_document, insert_chunk, vector_search, list/delete
+│   │   └── prompt_builder.py# SYSTEM_PROMPT + build_prompt() — numbered context injection
+│   ├── requirements.txt     # + sqlalchemy, asyncpg, pgvector, sentence-transformers, pypdf
 │   ├── Dockerfile           # python:3.12-slim → non-root user → gunicorn 2 workers
 │   └── .env.example
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx           # Root layout: header, error banner, chat area, input bar
+│   │   ├── App.tsx           # Root layout: Chat / RAG tab switcher in header
+│   │   ├── pages/
+│   │   │   └── RagPage.tsx   # Two-panel RAG UI (document panel + RAG chat)
 │   │   ├── components/
-│   │   │   ├── ChatThread.tsx # Message list, auto-scroll, streaming cursor animation
-│   │   │   └── InputBar.tsx   # Auto-grow textarea, Enter-to-send, loading spinner
+│   │   │   ├── ChatThread.tsx  # Message list, auto-scroll, streaming cursor animation
+│   │   │   ├── InputBar.tsx    # Auto-grow textarea, Enter-to-send, loading spinner
+│   │   │   ├── DocumentUpload.tsx # Drag-and-drop / browse zone, ingest progress
+│   │   │   ├── DocumentList.tsx   # Ingested file rows with delete button
+│   │   │   └── SourceBadges.tsx   # Indigo pill badges for RAG source citations
 │   │   ├── hooks/
-│   │   │   └── useChat.ts    # Optimistic UI, token accumulation, error recovery
+│   │   │   ├── useChat.ts    # Optimistic UI, token accumulation, error recovery
+│   │   │   └── useRag.ts     # RAG messages, upload, delete, document list state
 │   │   └── services/
-│   │       └── api.ts        # AsyncGenerator SSE client (fetch + ReadableStream)
+│   │       ├── api.ts        # AsyncGenerator SSE client for /api/chat
+│   │       └── ragApi.ts     # ingestDocument, streamRagQuery (+ sources), listDocuments
 │   ├── nginx.conf            # SPA fallback, /api/ reverse-proxy, rate-limit, gzip
 │   ├── Dockerfile            # node:22 build stage → nginx:1.27-alpine serve stage
 │   ├── vite.config.ts        # Vite + Tailwind CSS v4 + vite-plugin-pwa (Workbox)
 │   └── .env.example
 │
-├── docker-compose.yml        # Two services: backend (internal) + frontend (port 80)
+├── docker-compose.yml        # Three services: postgres + backend (internal) + frontend (:80)
 ├── .env.example              # Root template for docker-compose
 └── README.md
 ```

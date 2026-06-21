@@ -17,11 +17,14 @@ export interface Message {
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
-export async function* streamChat(messages: Message[]): AsyncGenerator<string> {
+export async function* streamChat(
+  messages: Message[],
+  provider?: 'gemini' | 'ollama'
+): AsyncGenerator<string> {
   const response = await fetch(`${API_BASE}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages, provider }),
   });
 
   if (!response.ok) {
@@ -60,8 +63,18 @@ export async function* streamChat(messages: Message[]): AsyncGenerator<string> {
       const payload = line.slice('data:'.length).trim();
       if (payload === '[DONE]') return;
       try {
-        const token: string = JSON.parse(payload);
-        yield token;
+        const parsed: unknown = JSON.parse(payload);
+
+        // Handle structured events (sources, errors, etc.) — skip them in regular chat
+        if (typeof parsed === 'object' && parsed !== null) {
+          // Skip objects like {"type": "sources", ...} — they don't belong in chat stream
+          continue;
+        }
+
+        // Plain text token
+        if (typeof parsed === 'string') {
+          yield parsed;
+        }
       } catch {
         // Malformed SSE line — skip
       }

@@ -11,8 +11,9 @@ interface UseChatReturn {
   messages: ChatMessage[];
   isLoading: boolean;
   error: string | null;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, provider?: 'gemini' | 'ollama') => Promise<void>;
   clearError: () => void;
+  clearMessages: () => void;
 }
 
 export function useChat(): UseChatReturn {
@@ -22,7 +23,7 @@ export function useChat(): UseChatReturn {
   // Keep a stable ref to messages so the async stream closure sees latest state
   const messagesRef = useRef<ChatMessage[]>([]);
 
-  const sendMessage = useCallback(async (content: string) => {
+  const sendMessage = useCallback(async (content: string, provider?: 'gemini' | 'ollama') => {
     const trimmed = content.trim();
     if (!trimmed || isLoading) return;
 
@@ -53,7 +54,7 @@ export function useChat(): UseChatReturn {
 
     try {
       let accumulated = '';
-      for await (const token of streamChat(apiMessages)) {
+      for await (const token of streamChat(apiMessages, provider)) {
         accumulated += token;
         // Update the last (assistant) message in-place as tokens arrive
         setMessages((prev) => {
@@ -78,5 +79,11 @@ export function useChat(): UseChatReturn {
 
   const clearError = useCallback(() => setError(null), []);
 
-  return { messages, isLoading, error, sendMessage, clearError };
+  const clearMessages = useCallback(() => {
+    setMessages([]);
+    messagesRef.current = [];
+    setError(null);
+  }, []);
+
+  return { messages, isLoading, error, sendMessage, clearError, clearMessages };
 }

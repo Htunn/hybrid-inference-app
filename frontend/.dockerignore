@@ -1,0 +1,20 @@
+# Development dependencies & build cache
+node_modules/
+dist/
+.vite/
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Secrets / env files — never bake these into the image
+.env
+.env.*
+!.env.example
+
+# Docs
+*.md
+README*

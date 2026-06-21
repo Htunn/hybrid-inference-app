@@ -1,0 +1,158 @@
+# Model Configuration (vLLM-inspired)
+# Defines quantization, memory, and performance settings for different backends
+
+# ============================================================================
+# vLLM Configuration
+# ============================================================================
+# Reference: https://docs.vllm.ai/en/latest/configuration/engine_args/
+
+[vllm]
+# Model selection (HuggingFace model ID or local path)
+model = "meta-llama/Llama-3.1-8B-Instruct"
+
+# Quantization (reduces memory, improves throughput)
+# Options: awq, gptq, squeezellm, fp8, int8, None
+# See: https://docs.vllm.ai/en/latest/features/quantization/
+quantization = "fp8"  # or "awq" for 4-bit, None for no quantization
+
+# GPU memory utilization (0.0 - 1.0)
+# Lower values leave room for other processes
+gpu_memory_utilization = 0.90
+
+# Tensor parallelism (split model across GPUs)
+tensor_parallel_size = 1
+
+# Pipeline parallelism (stages across GPUs)
+pipeline_parallel_size = 1
+
+# Maximum model length (context window)
+max_model_len = 8192
+
+# Maximum number of sequences in a batch
+max_num_seqs = 256
+
+# Enable prefix caching (reduces redundant computation)
+# Automatically caches prompt prefixes
+enable_prefix_caching = true
+
+# Enable chunked prefill (process long prompts in chunks)
+enable_chunked_prefill = true
+
+# KV cache dtype (for attention state storage)
+# Options: auto, fp8, fp16
+kv_cache_dtype = "fp8"
+
+# Speculative decoding (draft model for faster generation)
+# See: https://docs.vllm.ai/en/latest/features/speculative_decoding/
+# speculative_model = "meta-llama/Llama-3.2-1B-Instruct"
+# num_speculative_tokens = 3
+
+# ============================================================================
+# Ollama Configuration
+# ============================================================================
+
+[ollama]
+model = "gemma4:e4b"
+base_url = "http://host.docker.internal:11434"
+
+# Quantization is handled by Ollama model tags:
+# - :q4_0  → 4-bit (fastest, lowest memory)
+# - :q4_1  → 4-bit with better quality
+# - :q8_0  → 8-bit (balanced)
+# - :e4b   → 4-bit expert quantization (MoE models)
+# - :f16   → Full precision
+
+# Context length
+num_ctx = 8192
+
+# Batch size
+num_batch = 512
+
+# GPU layers (number of layers to offload to GPU)
+# Set to -1 for all layers, 0 for CPU-only
+num_gpu = -1
+
+# ============================================================================
+# Gemini Configuration  
+# ============================================================================
+
+[gemini]
+model = "gemini-2.5-flash"
+# Alternative: gemini-2.5-pro (higher quality, slower)
+
+# Safety settings (BLOCK_NONE, BLOCK_ONLY_HIGH, BLOCK_MEDIUM_AND_ABOVE)
+harm_category_harassment = "BLOCK_ONLY_HIGH"
+harm_category_hate_speech = "BLOCK_ONLY_HIGH"
+harm_category_sexually_explicit = "BLOCK_ONLY_HIGH"
+harm_category_dangerous_content = "BLOCK_ONLY_HIGH"
+
+# Generation config
+max_output_tokens = 8192
+temperature = 0.7
+top_p = 0.95
+top_k = 40
+
+# ============================================================================
+# OpenAI Configuration
+# ============================================================================
+
+[openai]
+model = "gpt-4o-mini"
+# Alternatives: gpt-4o, gpt-4-turbo, gpt-3.5-turbo
+
+max_tokens = 4096
+temperature = 0.7
+top_p = 1.0
+frequency_penalty = 0.0
+presence_penalty = 0.0
+
+# ============================================================================
+# Batch Processing
+# ============================================================================
+
+[batching]
+# Enable continuous batching (like vLLM)
+enabled = true
+
+# Maximum batch size (number of requests processed together)
+max_batch_size = 8
+
+# Maximum wait time before forcing batch execution (milliseconds)
+max_wait_ms = 50
+
+# ============================================================================
+# Prefix Caching
+# ============================================================================
+
+[caching]
+# Enable prefix caching (reduces computation for repeated prompts)
+enabled = true
+
+# Maximum number of cached prefixes (LRU eviction)
+max_cache_size = 100
+
+# Minimum message count to consider as cacheable prefix
+min_prefix_length = 3
+
+# Cache expiry time (seconds, 0 = no expiry)
+cache_ttl = 3600
+
+# ============================================================================
+# Performance Tuning
+# ============================================================================
+
+[performance]
+# Number of Gunicorn worker processes
+workers = 4
+
+# Worker class (sync, uvicorn, gevent)
+worker_class = "uvicorn.workers.UvicornWorker"
+
+# Timeout for requests (seconds)
+timeout = 120
+
+# Enable CUDA graphs for faster inference (vLLM)
+enable_cuda_graphs = true
+
+# Flash Attention 2 (faster attention for long contexts)
+enable_flash_attn = true

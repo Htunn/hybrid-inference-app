@@ -1,0 +1,28 @@
+# Development artefacts
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Secrets / env files — never bake these into the image
+.env
+.env.*
+!.env.example
+
+# Docs & tests — not needed at runtime
+tests/
+docs/
+*.md
