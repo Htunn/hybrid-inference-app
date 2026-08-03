@@ -36,7 +36,7 @@ _FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # type: ignore[type-arg]
-    logger.info("Starting Hybrid Inference Proxy")
+    logger.info("Starting InferMesh Proxy")
     logger.info("Inference provider : %s", _INFERENCE_PROVIDER)
     logger.info("CORS allowed origin: %s", _FRONTEND_ORIGIN)
 
@@ -51,6 +51,29 @@ async def lifespan(app: FastAPI):  # type: ignore[type-arg]
     elif _INFERENCE_PROVIDER == "vllm":
         vllm_url = os.getenv("VLLM_BASE_URL", "http://localhost:8000")
         logger.info("vLLM backend URL: %s", vllm_url)
+    elif _INFERENCE_PROVIDER == "claude":
+        if not os.getenv("CLAUDE_API_KEY"):
+            logger.warning("INFERENCE_PROVIDER=claude but CLAUDE_API_KEY is not set")
+        if not os.getenv("CLAUDE_BASE_URL"):
+            logger.warning("INFERENCE_PROVIDER=claude but CLAUDE_BASE_URL is not set")
+        if not os.getenv("CLAUDE_MODEL"):
+            logger.warning("INFERENCE_PROVIDER=claude but CLAUDE_MODEL is not set")
+        if os.getenv("CLAUDE_BASE_URL"):
+            base_url = os.getenv("CLAUDE_BASE_URL")
+            api_type = os.getenv("CLAUDE_API_TYPE", "").lower()
+            
+            # Auto-detect API type
+            if api_type == "anthropic":
+                detected_type = "native Anthropic API"
+            elif api_type == "openai":
+                detected_type = "OpenAI-compatible"
+            elif "anthropic.com" in base_url:
+                detected_type = "native Anthropic API (auto-detected)"
+            else:
+                detected_type = "OpenAI-compatible (auto-detected)"
+            
+            logger.info("Claude base URL: %s", base_url)
+            logger.info("Claude API type: %s", detected_type)
 
     # Initialize batch processor (optional, configurable)
     batch_enabled = os.getenv("BATCH_ENABLED", "false").lower() == "true"
@@ -84,7 +107,7 @@ async def lifespan(app: FastAPI):  # type: ignore[type-arg]
     yield  # application runs here
 
     # Shutdown
-    logger.info("Shutting down Hybrid Inference Proxy")
+    logger.info("Shutting down InferMesh Proxy")
     if app.state.batch_processor:
         await app.state.batch_processor.stop()
         logger.info("Batch processor stopped")
@@ -93,10 +116,10 @@ async def lifespan(app: FastAPI):  # type: ignore[type-arg]
 # ---------------------------------------------------------------------------
 # App — hide interactive docs in production to reduce attack surface
 # ---------------------------------------------------------------------------
-_is_production = _INFERENCE_PROVIDER in ("gemini", "openai", "vllm")
+_is_production = _INFERENCE_PROVIDER in ("gemini", "openai", "vllm", "claude")
 
 app = FastAPI(
-    title="Hybrid Inference Proxy",
+    title="InferMesh Proxy",
     version="2.0.0",
     lifespan=lifespan,
     docs_url=None if _is_production else "/docs",
@@ -169,7 +192,7 @@ async def metrics_root() -> str:
     Scrape config for Prometheus:
     ```yaml
     scrape_configs:
-      - job_name: 'hybrid-inference'
+      - job_name: 'infermesh'
         static_configs:
           - targets: ['backend:8000']
         metrics_path: '/metrics'

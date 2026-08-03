@@ -1,4 +1,4 @@
-# Hybrid Inference Platform
+# InferMesh
 
 **A learning-focused demonstration of AI inference and RAG (Retrieval Augmented Generation) pipelines.**
 
@@ -150,7 +150,7 @@ This is a **demonstration project** designed to help you **understand the end-to
 
 ---
 
-## Hybrid Inference Pattern
+## InferMesh Pattern
 
 ### Why "hybrid"?
 
@@ -219,6 +219,7 @@ flowchart TD
 | **FastAPI proxy** | Python 3.12, Gunicorn + uvicorn workers | Request validation, upstream fan-out, SSE normalisation |
 | **Ollama** | Host-side process | Runs `gemma4:e4b` on-device; zero external traffic |
 | **Google Gemini** | Google Cloud | `gemini-2.5-flash` via REST; API key kept server-side only |
+| **Claude** | Native or OpenAI-compatible | Direct Anthropic API or custom proxies (auto-detects) |
 
 ---
 
@@ -253,6 +254,9 @@ The React client iterates an `AsyncGenerator<string>` — it has no knowledge of
 ```
 INFERENCE_PROVIDER=ollama  →  POST http://ollama:11434/api/chat  (NDJSON → normalised SSE)
 INFERENCE_PROVIDER=gemini  →  POST googleapis.com/…:streamGenerateContent?alt=sse  (SSE → SSE)
+INFERENCE_PROVIDER=claude  →  POST {base_url}/v1/messages (Anthropic) OR /chat/completions (OpenAI-compatible)
+INFERENCE_PROVIDER=openai  →  POST api.openai.com/v1/chat/completions  (OpenAI SSE → SSE)
+INFERENCE_PROVIDER=vllm    →  POST {vllm_url}/v1/chat/completions  (OpenAI SSE → SSE)
 ```
 
 ### Streaming pipeline
@@ -511,11 +515,12 @@ sequenceDiagram
 This project demonstrates several advanced techniques inspired by [vLLM](https://github.com/vllm-project/vllm) (83k+ stars, PagedAttention pioneer):
 
 #### 1. Multi-Backend Abstraction
-Support for **4 inference backends** with a unified interface:
+Support for **5 inference backends** with a unified interface:
 - **Ollama** — Local on-device inference (dev/air-gapped)
 - **Google Gemini** — Cloud API (production recommended)
 - **vLLM** — Self-hosted high-performance server (OpenAI-compatible)
 - **OpenAI** — GPT-4o / GPT-4o-mini via official API
+- **Claude** — Native Anthropic API or OpenAI-compatible endpoints (auto-detects)
 
 Switch providers with one environment variable — no code changes required:
 ```bash
@@ -523,6 +528,7 @@ INFERENCE_PROVIDER=vllm    # → vLLM server
 INFERENCE_PROVIDER=openai  # → OpenAI API
 INFERENCE_PROVIDER=gemini  # → Google Gemini
 INFERENCE_PROVIDER=ollama  # → Local Ollama
+INFERENCE_PROVIDER=claude  # → Claude (auto-detects native or compatible API)
 ```
 
 #### 2. Prefix Caching
@@ -845,11 +851,15 @@ INFERENCE_PROVIDER=ollama docker compose up -d
 
 | Variable | Default | Description |
 |---|---|---|
-| `INFERENCE_PROVIDER` | `ollama` | `ollama` or `gemini` |
+| `INFERENCE_PROVIDER` | `ollama` | `ollama`, `gemini`, `vllm`, `openai`, or `claude` |
 | `GOOGLE_API_KEY` | — | Required when provider is `gemini` |
 | `GEMINI_MODEL` | `gemini-2.5-flash` | Any model listed at `/v1beta/models` |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
 | `OLLAMA_MODEL` | `gemma4:e4b` | Any `ollama pull`-ed model tag |
+| `CLAUDE_BASE_URL` | — | Claude endpoint URL (native: `https://api.anthropic.com`, custom: `https://api.example.com/v1`) |
+| `CLAUDE_API_KEY` | — | API key (Bearer token for native, x-api-key for custom) |
+| `CLAUDE_MODEL` | — | Model identifier (e.g. `claude-3-5-sonnet-20241022`) |
+| `CLAUDE_API_TYPE` | (auto-detect) | Optional: `anthropic` (native) or `openai` (compatible) - auto-detects from URL if not set |
 | `FRONTEND_ORIGIN` | `http://localhost:5173` | CORS-allowed origin (exact match, no trailing slash) |
 | `DATABASE_URL` | — | asyncpg connection string for RAG (e.g. `postgresql+asyncpg://rag:pw@localhost:5432/rag_db`); RAG disabled if unset |
 | `EMBEDDER_PROVIDER` | `local` | `local` (sentence-transformers) — `openai`/`gemini` stubs available |
@@ -874,7 +884,7 @@ All backend vars above, plus:
 ## Project Structure
 
 ```
-hybrid-inference-app/
+InferMesh/
 ├── backend/
 │   ├── main.py              # FastAPI app — CORS, lifespan (init_db + embedder), routing
 │   ├── routers/
@@ -1080,17 +1090,155 @@ curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=$GOOGLE_API
 GEMINI_MODEL=gemini-2.5-pro docker compose up -d
 ```
 
-#### Comparing the two inference backends
+---
 
-| | Ollama + Gemma4 E4B | Google Gemini 2.5 Flash |
-|---|---|---|
-| **Cost** | Free (electricity only) | Pay-per-token |
-| **Privacy** | 100% on-device | Google processes data |
-| **Latency** | Depends on local hardware | ~500 ms first token |
-| **Context window** | 8 192 tokens | 1 048 576 tokens |
-| **Offline capable** | Yes | No |
-| **Setup** | `ollama pull gemma4:e4b` | Google AI Studio API key |
-| **Best for** | Dev, testing, private data | Production, long context, quality |
+### Claude (Native & Custom Endpoints)
+
+When `INFERENCE_PROVIDER=claude` the proxy supports **both native Anthropic API and OpenAI-compatible Claude endpoints**. The backend automatically detects which API format to use based on the configured URL.
+
+#### Supported API Types
+
+**1. Native Anthropic Messages API** (auto-detected when URL contains `anthropic.com`)
+- Direct access to Anthropic's official API
+- Uses `Authorization: Bearer` authentication
+- Endpoint: `/v1/messages`
+- Optimal for direct Anthropic API usage
+
+**2. OpenAI-Compatible Format** (auto-detected for other URLs)
+- Enterprise proxies, AWS Bedrock, managed platforms
+- Uses `x-api-key` authentication
+- Endpoint: `/v1/chat/completions` or `/chat/completions`
+- Works with any OpenAI-compatible Claude proxy
+
+#### Configuration
+
+Required environment variables:
+
+| Variable | Required | Description | Example |
+|---|---|---|---|
+| `CLAUDE_BASE_URL` | ✓ | Base URL (auto-detects API type) | `https://api.anthropic.com` or `https://api.example.com/v1` |
+| `CLAUDE_API_KEY` | ✓ | API key (format depends on endpoint) | `sk-ant-...` (Anthropic) or custom key |
+| `CLAUDE_MODEL` | ✓ | Model identifier | `claude-3-5-sonnet-20241022` |
+| `CLAUDE_API_TYPE` | Optional | Override auto-detection: `anthropic` or `openai` | `anthropic` |
+
+#### Example 1: Native Anthropic API
+
+```bash
+# 1. Set environment variables in .env
+echo "INFERENCE_PROVIDER=claude" >> .env
+echo "CLAUDE_BASE_URL=https://api.anthropic.com" >> .env
+echo "CLAUDE_API_KEY=sk-ant-api03-..." >> .env
+echo "CLAUDE_MODEL=claude-3-5-sonnet-20241022" >> .env
+
+# 2. Start the backend
+docker compose up -d backend
+
+# 3. Verify configuration
+docker compose logs backend | grep -i claude
+# Should show: "Claude API type: native Anthropic API (auto-detected)"
+```
+
+#### Example 2: OpenAI-Compatible Endpoint
+
+```bash
+# 1. Set environment variables in .env
+echo "INFERENCE_PROVIDER=claude" >> .env
+echo "CLAUDE_BASE_URL=https://api.example.com/v1" >> .env
+echo "CLAUDE_API_KEY=your-custom-key" >> .env
+echo "CLAUDE_MODEL=claude-3-5-sonnet-20241022" >> .env
+
+# 2. Start the backend
+docker compose up -d backend
+
+# 3. Verify configuration
+docker compose logs backend | grep -i claude
+# Should show: "Claude API type: OpenAI-compatible (auto-detected)"
+```
+
+#### Example 3: Explicit API Type Override
+
+```bash
+# Force OpenAI-compatible mode even for anthropic.com URLs
+echo "CLAUDE_API_TYPE=openai" >> .env
+
+# Force native Anthropic mode for custom proxy
+echo "CLAUDE_API_TYPE=anthropic" >> .env
+```
+
+#### How the request flows
+
+**Native Anthropic API:**
+```mermaid
+sequenceDiagram
+    participant Proxy as FastAPI Proxy
+    participant API as Anthropic API<br/>(api.anthropic.com)
+    participant LLM as Claude Model
+
+    Proxy->>API: POST /v1/messages<br/>Header: Authorization: Bearer ***<br/>Header: anthropic-version: 2023-06-01<br/>Body: {model, messages, system, stream:true}
+    API->>LLM: route to model
+    loop SSE stream
+        LLM-->>API: token batch
+        API-->>Proxy: data: {type:"content_block_delta",delta:{text:"tok"}}
+        Proxy-->>Proxy: extract text → emit data: "tok"\n\n
+    end
+    API-->>Proxy: data: {type:"message_stop"}
+```
+
+**OpenAI-Compatible:**
+```mermaid
+sequenceDiagram
+    participant Proxy as FastAPI Proxy
+    participant CAPI as Custom Endpoint<br/>(OpenAI-compatible)
+    participant LLM as Claude Model
+
+    Proxy->>CAPI: POST /chat/completions<br/>Header: x-api-key: ***<br/>Body: {model, messages, stream:true}
+    CAPI->>LLM: route to model
+    loop SSE stream
+        LLM-->>CAPI: token batch
+        CAPI-->>Proxy: data: {choices:[{delta:{content:"tok"}}]}
+        Proxy-->>Proxy: extract content → emit data: "tok"\n\n
+    end
+    CAPI-->>Proxy: data: [DONE]
+```
+
+#### Endpoint Compatibility
+
+✅ **Native Anthropic API Compatible:**
+- `https://api.anthropic.com` (official Anthropic API)
+- Any endpoint implementing Anthropic's Messages API format
+
+✅ **OpenAI-Compatible Format:**
+- AWS Bedrock (via OpenAI-compatible proxy)
+- Enterprise Claude proxies
+- Managed platforms (government AI platforms, etc.)
+- Custom middleware implementing `/chat/completions`
+
+#### Testing
+
+```bash
+# Test with a simple query
+curl -N http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Say hello"}]}'
+
+# Switch models on the fly
+CLAUDE_MODEL=claude-3-opus-20240229 docker compose up -d
+
+#### 4. Switch model without rebuild
+GEMINI_MODEL=gemini-2.5-pro docker compose up -d
+```
+
+#### Comparing the inference backends
+
+| | Ollama + Gemma4 E4B | Google Gemini 2.5 Flash | Claude (Native & Custom) |
+|---|---|---|---|
+| **Cost** | Free (electricity only) | Pay-per-token | Depends on endpoint provider |
+| **Privacy** | 100% on-device | Google processes data | Depends on endpoint provider |
+| **Latency** | Depends on local hardware | ~500 ms first token | Depends on endpoint |
+| **Context window** | 8 192 tokens | 1 048 576 tokens | Varies by model |
+| **Offline capable** | Yes | No | Depends on endpoint |
+| **Setup** | `ollama pull gemma4:e4b` | Google AI Studio API key | Native API key or custom endpoint |
+| **Best for** | Dev, testing, private data | Production, long context, quality | Direct Anthropic access, enterprise proxies |
 
 ---
 
@@ -1102,8 +1250,8 @@ Contributions are welcome! Here's how to get started:
 
 ```bash
 # 1. Fork the repo and clone your fork
-git clone https://github.com/<your-username>/hybrid-inference-app.git
-cd hybrid-inference-app
+git clone https://github.com/<your-username>/InferMesh.git
+cd InferMesh
 
 # 2. Create a feature branch off main
 git checkout -b feat/your-feature-name

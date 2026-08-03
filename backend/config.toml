@@ -98,6 +98,47 @@ top_k = 40
 
 [openai]
 model = "gpt-4o-mini"
+
+# ============================================================================
+# Claude Configuration (Custom Endpoint)
+# ============================================================================
+
+[claude]
+# Base URL for Claude endpoint
+# The backend auto-detects API type based on URL:
+#   - URLs containing "anthropic.com" → native Anthropic API
+#   - Other URLs → OpenAI-compatible format
+#
+# Native Anthropic API examples:
+#   - https://api.anthropic.com
+#
+# OpenAI-compatible examples:
+#   - https://api.example.com/v1
+#   - http://localhost:8080/v1
+base_url = "https://api.anthropic.com"
+
+# Model identifier (depends on your endpoint)
+# Native Anthropic API models:
+#   - claude-3-5-sonnet-20241022
+#   - claude-3-opus-20240229
+#   - claude-3-haiku-20240307
+#
+# OpenAI-compatible custom models:
+#   - bedrock.claude-sonnet-4-6 (AWS Bedrock proxy)
+#   - Any custom model identifier from your endpoint
+model = "claude-3-5-sonnet-20241022"
+
+# Optional: Explicitly set API type to override auto-detection
+# api_type = "anthropic"  # Use native Anthropic Messages API
+# api_type = "openai"     # Use OpenAI-compatible format
+
+# API key for authentication (x-api-key header)
+# Obtain from your Claude endpoint provider
+# api_key = "your-api-key-here"  # Set via CLAUDE_API_KEY env var instead
+
+# Generation config
+max_tokens = 2048
+temperature = 0.7
 # Alternatives: gpt-4o, gpt-4-turbo, gpt-3.5-turbo
 
 max_tokens = 4096

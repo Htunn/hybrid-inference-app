@@ -45,7 +45,7 @@ services:
       dockerfile: Dockerfile
     environment:
       # === Inference Provider (choose one) ===
-      # Options: ollama | gemini | vllm | openai
+      # Options: ollama | gemini | vllm | openai | claude
       INFERENCE_PROVIDER: ${INFERENCE_PROVIDER:-gemini}
 
       # === Google Gemini ===
@@ -64,6 +64,12 @@ services:
       # === Ollama (local development) ===
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma4:e4b}
+
+      # === Claude (Custom Endpoint) ===
+      CLAUDE_BASE_URL: ${CLAUDE_BASE_URL:-}
+      CLAUDE_API_KEY: ${CLAUDE_API_KEY:-}
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-}
+      CLAUDE_API_TYPE: ${CLAUDE_API_TYPE:-}  # Optional: "anthropic" or "openai" (auto-detected if not set)
 
       # === Performance Tuning ===
       BATCH_ENABLED: ${BATCH_ENABLED:-false}
