@@ -1,8 +1,8 @@
 # ==============================================================================
-# Hybrid Inference App — Makefile
+# InferMesh — Makefile
 # ==============================================================================
 # Production-ready commands for building, deploying, testing, and managing
-# the Hybrid Inference application.
+# the InferMesh application.
 #
 # Quick Start:
 #   make setup          # First-time setup
@@ -54,7 +54,7 @@ NC     := \033[0m # No Color
 
 help: ## Show this help message
 	@echo ""
-	@echo "$(BLUE)Hybrid Inference App — Available Commands$(NC)"
+	@echo "$(BLUE)InferMesh — Available Commands$(NC)"
 	@echo "=============================================="
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "$(GREEN)%-20s$(NC) %s\n", $$1, $$2}'
@@ -69,7 +69,7 @@ help: ## Show this help message
 # ==============================================================================
 
 setup: ## First-time setup (copy .env, install dependencies)
-	@echo "$(BLUE)Setting up Hybrid Inference App...$(NC)"
+	@echo "$(BLUE)Setting up InferMesh...$(NC)"
 	@if [ ! -f .env ]; then \
 		echo "$(YELLOW)⚠  .env file already exists. Skipping...$(NC)"; \
 		echo "$(GREEN)✓  .env file exists$(NC)"; \
@@ -349,7 +349,7 @@ tail: logs-follow ## Alias for 'logs-follow'
 # ==============================================================================
 
 version: ## Show version information
-	@echo "$(BLUE)Hybrid Inference App$(NC)"
+	@echo "$(BLUE)InferMesh$(NC)"
 	@echo "  Docker: $$(docker --version)"
 	@echo "  Docker Compose: $$(docker compose version)"
 	@if [ -f .env ]; then \

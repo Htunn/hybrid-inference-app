@@ -70,8 +70,8 @@ class ChatRequest(BaseModel):
     @field_validator("provider")
     @classmethod
     def validate_provider(cls, v: str | None) -> str | None:
-        if v is not None and v not in {"ollama", "gemini", "openai", "vllm"}:
-            raise ValueError("provider must be 'ollama', 'gemini', 'openai', or 'vllm'")
+        if v is not None and v not in {"ollama", "gemini", "openai", "vllm", "claude"}:
+            raise ValueError("provider must be 'ollama', 'gemini', 'openai', 'vllm', or 'claude'")
         return v
 
 

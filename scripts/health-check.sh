@@ -13,7 +13,7 @@ BASE_URL="${1:-http://localhost}"
 TIMEOUT=5
 MAX_RETRIES=3
 
-echo "🔍 Hybrid Inference App — Health Check"
+echo "🔍 InferMesh — Health Check"
 echo "=========================================="
 echo "Target: $BASE_URL"
 echo ""

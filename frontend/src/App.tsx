@@ -20,7 +20,7 @@ function App() {
           AI
         </div>
         <div className="flex-1">
-          <h1 className="text-sm font-semibold leading-none">Hybrid Inference Chat</h1>
+          <h1 className="text-sm font-semibold leading-none">InferMesh</h1>
           <p className="mt-0.5 text-xs text-slate-400">
             {provider === 'gemini' ? 'Cloud · Gemini 2.5 Flash' : 'Local · Gemma4 E4B via Ollama'}
           </p>

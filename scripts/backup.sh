@@ -26,7 +26,7 @@ fi
 
 # Backup docker volumes
 echo "├─ Backing up Docker volumes..."
-docker run --rm -v hybrid-inference-app_pgdata:/data -v "$BACKUP_DIR":/backup alpine tar czf "/backup/pgdata_${TIMESTAMP}.tar.gz" -C /data . 2>/dev/null || true
+docker run --rm -v infermesh_pgdata:/data -v "$BACKUP_DIR":/backup alpine tar czf "/backup/pgdata_${TIMESTAMP}.tar.gz" -C /data . 2>/dev/null || true
 
 echo "✓  Backup complete"
 echo ""

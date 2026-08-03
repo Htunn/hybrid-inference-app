@@ -12,8 +12,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'icons/*.png'],
       manifest: {
-        name: 'Hybrid Inference Chat',
-        short_name: 'AI Chat',
+        name: 'InferMesh',
+        short_name: 'InferMesh',
         description: 'Chat app powered by Gemma (local) or Gemini (cloud)',
         theme_color: '#0f172a',
         background_color: '#0f172a',

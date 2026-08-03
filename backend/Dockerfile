@@ -14,8 +14,8 @@ RUN pip install --no-cache-dir --prefix=/install/deps -r requirements.txt
 # ---------------------------------------------------------------------------- #
 FROM python:3.12-slim AS runtime
 
-LABEL org.opencontainers.image.title="hybrid-inference-backend" \
-  org.opencontainers.image.description="FastAPI backend for hybrid inference app" \
+LABEL org.opencontainers.image.title="infermesh-backend" \
+  org.opencontainers.image.description="FastAPI backend for InferMesh" \
   org.opencontainers.image.base.name="python:3.12-slim"
 
 # Security: non-root user

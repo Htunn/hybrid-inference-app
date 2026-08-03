@@ -1,11 +1,11 @@
-# Prometheus configuration for hybrid-inference-app
+# Prometheus configuration for InferMesh
 # Collects metrics from the FastAPI backend
 
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
   external_labels:
-    monitor: "hybrid-inference-monitor"
+    monitor: "infermesh-monitor"
 
 scrape_configs:
   # Backend API metrics

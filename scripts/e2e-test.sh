@@ -250,7 +250,7 @@ test_container_resources() {
     fi
     
     # Check if backend has memory limit
-    if docker inspect hybrid-inference-app-backend-1 2>/dev/null | grep -q "Memory.*[0-9]"; then
+    if docker inspect infermesh-backend-1 2>/dev/null | grep -q "Memory.*[0-9]"; then
         log_pass "Resource limits configured"
     else
         log_skip "Could not verify resource limits"
@@ -264,7 +264,7 @@ test_container_resources() {
 main() {
     echo ""
     echo "=========================================="
-    echo "  Hybrid Inference App — E2E Tests"
+    echo "  InferMesh — E2E Tests"
     echo "=========================================="
     echo "Target: $BASE_URL"
     echo ""

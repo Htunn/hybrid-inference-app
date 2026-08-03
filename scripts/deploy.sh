@@ -2,7 +2,7 @@
 # ==============================================================================
 # Production Deployment Script
 # ==============================================================================
-# Deploys the Hybrid Inference App with production best practices:
+# Deploys InferMesh with production best practices:
 # - Environment validation
 # - Database backup before deployment
 # - Zero-downtime deployment (build then swap)
@@ -271,7 +271,7 @@ rollback() {
 main() {
     echo ""
     echo "=========================================="
-    echo "  Hybrid Inference App — Deployment"
+    echo "  InferMesh — Deployment"
     echo "=========================================="
     echo ""
     
